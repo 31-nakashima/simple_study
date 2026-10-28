@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>理科基礎問題集</title>
+  
+  <!-- Supabase JS ライブラリの読み込み -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     * { box-sizing: border-box; }
     body {
@@ -124,20 +128,32 @@
   <script>
     // 実際のAPI URLに変更してください。
     const API_URL = "https://api.npoint.io/00b1b8a0970149d5a89b";
+    
     /*
-  Supabase接続設定
-*/
-const SUPABASE_URL =
-  "https://wedwysozznvkkvcxppte.supabase.co";
+      Supabase接続設定
+    */
+    const SUPABASE_URL = "https://wedwysozznvkkvcxppte.supabase.co"; 
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_s59ZDF3DsvcHE36Q8A2Zzw_ToevW6pp"; 
 
-const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_s59ZDF3DsvcHE36Q8A2Zzw_ToevW6pp";
+    const supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY
+    );
 
-const supabaseClient =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
-  );
+    // --- UUID生成用関数 (session_id, quiz_id用) ---
+    function generateUUID() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    // ログ記録用変数
+    const currentSessionId = generateUUID(); // ページロード時に1度だけ生成
+    let currentQuizId = null;
 
     let quizData = null;
     let selectedSubjectId = "";
@@ -168,6 +184,36 @@ const supabaseClient =
     const explanationText = $("explanationText");
     const scoreText = $("scoreText");
     const errorText = $("error");
+
+    // --- Supabase ログ記録関数 ---
+    async function logToSupabase(eventType, additionalData = {}) {
+      if (!currentQuizId) return;
+
+      const subject = quizData?.subjects.find(s => s.subjectId === selectedSubjectId);
+      const subjectName = subject ? subject.subject : "";
+
+      const payload = {
+        session_id: currentSessionId,
+        quiz_id: currentQuizId,
+        event_type: eventType,
+        subject_id: selectedSubjectId,
+        subject_name: subjectName,
+        difficulty: selectedDifficulty,
+        ...additionalData
+      };
+
+      try {
+        const { error } = await supabaseClient
+          .from('quiz_logs')
+          .insert(payload);
+          
+        if (error) {
+          console.error("Supabase Log Error:", error.message);
+        }
+      } catch (err) {
+        console.error("Supabase Log Exception:", err);
+      }
+    }
 
     async function loadQuizData() {
       try {
@@ -229,6 +275,11 @@ const supabaseClient =
       selectedQuestions = shuffleArray([...filtered]).slice(0, 20);
       currentQuestionIndex = 0;
       score = 0;
+      
+      // クイズ開始時に新しいquiz_idを生成し、ログを送信
+      currentQuizId = generateUUID();
+      logToSupabase("quiz_start");
+
       startScreen.style.display = "none";
       resultScreen.style.display = "none";
       questionScreen.style.display = "block";
@@ -241,8 +292,8 @@ const supabaseClient =
       nextButton.style.display = "none";
       choicesContainer.innerHTML = "";
       const q = selectedQuestions[currentQuestionIndex];
-      progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問　正解数: ${score}`;
-      meta.textContent = `${q.category || ""}${q.unit ? " / " + q.unit : ""}`;
+      progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問 正解数: ${score}`;
+      meta.textContent = `q.category||""{q.unit ? " / " + q.unit : ""}`;
       questionText.textContent = q.question;
       q.choices.forEach((choice, index) => {
         const button = document.createElement("button");
@@ -268,13 +319,22 @@ const supabaseClient =
         buttons[index].classList.add("incorrect");
         resultText.textContent = "不正解";
       }
+      
+      // 回答ログを送信
+      logToSupabase("answer", {
+        // question_idがない場合は設問文の先頭20文字を代替として保存
+        question_id: q.id || q.questionId || q.question.substring(0, 20), 
+        question_number: currentQuestionIndex + 1,
+        selected_choice_index: index
+      });
+
       answerText.textContent = `正解: ${q.answer}`;
       formulaText.textContent = q.formula ? `公式・ポイント: ${q.formula}` : "";
       explanationText.textContent = q.explanation ? `解説: ${q.explanation}` : "";
       feedback.style.display = "block";
       nextButton.style.display = "block";
       nextButton.textContent = currentQuestionIndex === selectedQuestions.length - 1 ? "結果を見る" : "次の問題";
-      progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問　正解数: ${score}`;
+      progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問 正解数: ${score}`;
     }
 
     function nextQuestion() {
@@ -284,10 +344,13 @@ const supabaseClient =
     }
 
     function showResult() {
+      // 終了ログを送信
+      logToSupabase("quiz_finish");
+
       questionScreen.style.display = "none";
       resultScreen.style.display = "block";
       const total = selectedQuestions.length;
-      scoreText.textContent = `${total}問中 ${score}問正解です。正答率は${Math.round(score / total * 100)}%です。`;
+      scoreText.textContent = `${total}問中 score問正解です。正答率は{Math.round(score / total * 100)}%です。`;
     }
 
     function shuffleArray(array) {
@@ -304,7 +367,9 @@ const supabaseClient =
       resultScreen.style.display = "none";
       startScreen.style.display = "block";
     });
+    
     loadQuizData();
   </script>
 </body>
 </html>
+
