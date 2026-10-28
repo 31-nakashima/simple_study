@@ -124,6 +124,20 @@
   <script>
     // 実際のAPI URLに変更してください。
     const API_URL = "https://api.npoint.io/00b1b8a0970149d5a89b";
+    /*
+  Supabase接続設定
+*/
+const SUPABASE_URL =
+  "https://wedwysozznvkkvcxppte.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_s59ZDF3DsvcHE36Q8A2Zzw_ToevW6pp";
+
+const supabaseClient =
+  window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+  );
 
     let quizData = null;
     let selectedSubjectId = "";
