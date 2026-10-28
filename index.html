@@ -5,57 +5,99 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>理科基礎問題集</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
-      max-width: 700px;
-      margin: 30px auto;
-      padding: 0 15px;
-      line-height: 1.6;
+      font-family: "Noto Sans JP", "Yu Gothic", sans-serif;
+      max-width: 720px;
+      margin: 32px auto;
+      padding: 0 16px;
       color: #222;
+      line-height: 1.6;
     }
-    h1 { font-size: 24px; }
-    select, button { font: inherit; padding: 8px; margin: 5px 0; }
-    select { width: 100%; }
-    button { cursor: pointer; }
+    h1 { font-size: 24px; margin-bottom: 28px; }
+    h2 { font-size: 20px; }
+    .section-title { margin: 22px 0 10px; font-weight: 700; }
+    .block-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .select-block {
+      width: 100%;
+      min-height: 60px;
+      padding: 12px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      color: #222;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .select-block:hover { background: #f5f5f5; }
+    .select-block.selected {
+      border-color: #1769e0;
+      background: #eaf2ff;
+      color: #0b4eae;
+    }
+    .main-button, #nextButton, #retryButton {
+      width: 100%;
+      margin-top: 24px;
+      padding: 12px;
+      border: 0;
+      border-radius: 8px;
+      background: #1769e0;
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .main-button:disabled { background: #aaa; cursor: not-allowed; }
     .choice {
       display: block;
       width: 100%;
       margin: 8px 0;
+      padding: 11px;
       text-align: left;
       background: #fff;
       border: 1px solid #aaa;
-      border-radius: 4px;
+      border-radius: 6px;
+      font: inherit;
+      cursor: pointer;
     }
     .choice:hover { background: #f3f3f3; }
     .choice:disabled { cursor: default; color: #222; }
     .correct { background: #d8f5d0 !important; border-color: #399b28; }
     .incorrect { background: #ffdada !important; border-color: #d33; }
     #questionScreen, #resultScreen { display: none; }
-    #progress { color: #555; margin-bottom: 10px; }
-    #meta { color: #666; font-size: 14px; }
-    #feedback { margin-top: 15px; padding: 10px; background: #f5f5f5; display: none; }
-    #nextButton { display: none; margin-top: 15px; }
+    #progress, #meta { color: #666; }
+    #meta { font-size: 14px; }
+    #feedback { display: none; margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; }
+    #nextButton { display: none; }
     #error { color: #c00; white-space: pre-wrap; }
+    @media (max-width: 480px) {
+      .block-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <h1 id="appTitle">理科基礎問題集</h1>
 
   <section id="startScreen">
-    <label for="subjectSelect">科目</label>
-    <select id="subjectSelect">
-      <option value="">読み込み中...</option>
-    </select>
+    <p class="section-title">科目を選択</p>
+    <div id="subjectBlocks" class="block-grid">
+      <p>読み込み中...</p>
+    </div>
 
-    <label for="difficultySelect">難易度</label>
-    <select id="difficultySelect">
-      <option value="all">すべて</option>
-      <option value="easy">かんたん</option>
-      <option value="normal">ふつう</option>
-      <option value="hard">むずかしい</option>
-    </select>
+    <p class="section-title">難易度を選択</p>
+    <div id="difficultyBlocks" class="block-grid">
+      <button type="button" class="select-block selected" data-value="all">すべて</button>
+      <button type="button" class="select-block" data-value="easy">かんたん</button>
+      <button type="button" class="select-block" data-value="normal">ふつう</button>
+      <button type="button" class="select-block" data-value="hard">むずかしい</button>
+    </div>
 
-    <button id="startButton" type="button">20問スタート</button>
+    <button id="startButton" class="main-button" type="button" disabled>20問スタート</button>
     <p id="error"></p>
   </section>
 
@@ -64,14 +106,12 @@
     <p id="meta"></p>
     <h2 id="questionText"></h2>
     <div id="choices"></div>
-
     <div id="feedback">
       <strong id="resultText"></strong>
       <p id="answerText"></p>
       <p id="formulaText"></p>
       <p id="explanationText"></p>
     </div>
-
     <button id="nextButton" type="button">次の問題</button>
   </section>
 
@@ -82,100 +122,99 @@
   </section>
 
   <script>
-    // 自分のAPI URLに変更してください。
+    // 実際のAPI URLに変更してください。
     const API_URL = "https://api.npoint.io/00b1b8a0970149d5a89b";
 
     let quizData = null;
+    let selectedSubjectId = "";
+    let selectedDifficulty = "all";
     let selectedQuestions = [];
     let currentQuestionIndex = 0;
     let score = 0;
     let answered = false;
 
-    const appTitle = document.getElementById("appTitle");
-    const startScreen = document.getElementById("startScreen");
-    const questionScreen = document.getElementById("questionScreen");
-    const resultScreen = document.getElementById("resultScreen");
-    const subjectSelect = document.getElementById("subjectSelect");
-    const difficultySelect = document.getElementById("difficultySelect");
-    const startButton = document.getElementById("startButton");
-    const nextButton = document.getElementById("nextButton");
-    const retryButton = document.getElementById("retryButton");
-    const progress = document.getElementById("progress");
-    const meta = document.getElementById("meta");
-    const questionText = document.getElementById("questionText");
-    const choicesContainer = document.getElementById("choices");
-    const feedback = document.getElementById("feedback");
-    const resultText = document.getElementById("resultText");
-    const answerText = document.getElementById("answerText");
-    const formulaText = document.getElementById("formulaText");
-    const explanationText = document.getElementById("explanationText");
-    const scoreText = document.getElementById("scoreText");
-    const errorText = document.getElementById("error");
+    const $ = (id) => document.getElementById(id);
+    const appTitle = $("appTitle");
+    const startScreen = $("startScreen");
+    const questionScreen = $("questionScreen");
+    const resultScreen = $("resultScreen");
+    const subjectBlocks = $("subjectBlocks");
+    const difficultyBlocks = $("difficultyBlocks");
+    const startButton = $("startButton");
+    const nextButton = $("nextButton");
+    const retryButton = $("retryButton");
+    const progress = $("progress");
+    const meta = $("meta");
+    const questionText = $("questionText");
+    const choicesContainer = $("choices");
+    const feedback = $("feedback");
+    const resultText = $("resultText");
+    const answerText = $("answerText");
+    const formulaText = $("formulaText");
+    const explanationText = $("explanationText");
+    const scoreText = $("scoreText");
+    const errorText = $("error");
 
     async function loadQuizData() {
       try {
-        errorText.textContent = "";
         const response = await fetch(API_URL);
-        if (!response.ok) {
-          throw new Error(`APIの取得に失敗しました。\nHTTPステータス: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTPステータス: ${response.status}`);
         quizData = await response.json();
         if (!quizData || !Array.isArray(quizData.subjects)) {
-          throw new Error("APIのJSON形式が正しくありません。subjects配列が必要です。");
+          throw new Error("subjects配列がありません。");
         }
-
         if (quizData.title) {
           appTitle.textContent = quizData.title;
           document.title = quizData.title;
         }
-        createSubjectOptions();
+        createSubjectBlocks();
       } catch (error) {
-        console.error(error);
-        subjectSelect.innerHTML = '<option value="">取得失敗</option>';
-        errorText.textContent = "問題データを取得できませんでした。\n\n" + error.message + "\n\nAPI_URLとCORS設定を確認してください。";
+        subjectBlocks.innerHTML = "";
+        errorText.textContent = `問題データを取得できませんでした。\n${error.message}\nAPI_URLとCORS設定を確認してください。`;
       }
     }
 
-    function createSubjectOptions() {
-      subjectSelect.innerHTML = "";
+    function createSubjectBlocks() {
+      subjectBlocks.innerHTML = "";
       quizData.subjects.forEach((subject) => {
-        const option = document.createElement("option");
-        option.value = subject.subjectId;
-        option.textContent = subject.subject;
-        subjectSelect.appendChild(option);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "select-block";
+        button.dataset.value = subject.subjectId;
+        button.textContent = subject.subject;
+        button.addEventListener("click", () => {
+          subjectBlocks.querySelectorAll(".select-block").forEach(b => b.classList.remove("selected"));
+          button.classList.add("selected");
+          selectedSubjectId = subject.subjectId;
+          startButton.disabled = false;
+          errorText.textContent = "";
+        });
+        subjectBlocks.appendChild(button);
       });
     }
 
-    function startQuiz() {
-      if (!quizData) {
-        errorText.textContent = "問題データがまだ読み込まれていません。";
-        return;
-      }
+    difficultyBlocks.addEventListener("click", (event) => {
+      const button = event.target.closest(".select-block");
+      if (!button) return;
+      difficultyBlocks.querySelectorAll(".select-block").forEach(b => b.classList.remove("selected"));
+      button.classList.add("selected");
+      selectedDifficulty = button.dataset.value;
+    });
 
-      const selectedSubject = quizData.subjects.find(
-        (subject) => subject.subjectId === subjectSelect.value
-      );
-      if (!selectedSubject) {
+    function startQuiz() {
+      const subject = quizData?.subjects.find(s => s.subjectId === selectedSubjectId);
+      if (!subject) {
         errorText.textContent = "科目を選択してください。";
         return;
       }
-
-      const difficulty = difficultySelect.value;
-      const filteredQuestions = selectedSubject.questions.filter(
-        (question) => difficulty === "all" || question.difficulty === difficulty
-      );
-
-      if (filteredQuestions.length === 0) {
+      const filtered = subject.questions.filter(q => selectedDifficulty === "all" || q.difficulty === selectedDifficulty);
+      if (!filtered.length) {
         errorText.textContent = "指定した条件に一致する問題がありません。";
         return;
       }
-
-      selectedQuestions = shuffleArray([...filteredQuestions]).slice(0, 20);
+      selectedQuestions = shuffleArray([...filtered]).slice(0, 20);
       currentQuestionIndex = 0;
       score = 0;
-      answered = false;
-      errorText.textContent = "";
       startScreen.style.display = "none";
       resultScreen.style.display = "none";
       questionScreen.style.display = "block";
@@ -187,61 +226,46 @@
       feedback.style.display = "none";
       nextButton.style.display = "none";
       choicesContainer.innerHTML = "";
-
-      const question = selectedQuestions[currentQuestionIndex];
+      const q = selectedQuestions[currentQuestionIndex];
       progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問　正解数: ${score}`;
-      meta.textContent = `${question.category || ""}${question.unit ? " / " + question.unit : ""}`;
-      questionText.textContent = question.question;
-
-      question.choices.forEach((choice, choiceIndex) => {
+      meta.textContent = `${q.category || ""}${q.unit ? " / " + q.unit : ""}`;
+      questionText.textContent = q.question;
+      q.choices.forEach((choice, index) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "choice";
-        button.textContent = `${String.fromCharCode(65 + choiceIndex)}. ${choice}`;
-        button.addEventListener("click", () => checkAnswer(choiceIndex));
+        button.textContent = `${String.fromCharCode(65 + index)}. ${choice}`;
+        button.addEventListener("click", () => checkAnswer(index));
         choicesContainer.appendChild(button);
       });
     }
 
-    function checkAnswer(selectedChoiceIndex) {
+    function checkAnswer(index) {
       if (answered) return;
       answered = true;
-
-      const question = selectedQuestions[currentQuestionIndex];
+      const q = selectedQuestions[currentQuestionIndex];
       const buttons = choicesContainer.querySelectorAll(".choice");
-      buttons.forEach((button) => { button.disabled = true; });
-      buttons[question.correctChoiceIndex].classList.add("correct");
-
-      if (selectedChoiceIndex === question.correctChoiceIndex) {
+      buttons.forEach(b => b.disabled = true);
+      buttons[q.correctChoiceIndex].classList.add("correct");
+      if (index === q.correctChoiceIndex) {
         score++;
         resultText.textContent = "正解";
       } else {
-        buttons[selectedChoiceIndex].classList.add("incorrect");
+        buttons[index].classList.add("incorrect");
         resultText.textContent = "不正解";
       }
-
-      answerText.textContent = `正解: ${question.answer}`;
-      if (question.formula) {
-        formulaText.style.display = "block";
-        formulaText.textContent = `公式・ポイント: ${question.formula}`;
-      } else {
-        formulaText.style.display = "none";
-        formulaText.textContent = "";
-      }
-
-      explanationText.textContent = question.explanation ? `解説: ${question.explanation}` : "";
+      answerText.textContent = `正解: ${q.answer}`;
+      formulaText.textContent = q.formula ? `公式・ポイント: ${q.formula}` : "";
+      explanationText.textContent = q.explanation ? `解説: ${q.explanation}` : "";
       feedback.style.display = "block";
-      nextButton.style.display = "inline-block";
+      nextButton.style.display = "block";
       nextButton.textContent = currentQuestionIndex === selectedQuestions.length - 1 ? "結果を見る" : "次の問題";
       progress.textContent = `${currentQuestionIndex + 1} / ${selectedQuestions.length}問　正解数: ${score}`;
     }
 
     function nextQuestion() {
       currentQuestionIndex++;
-      if (currentQuestionIndex >= selectedQuestions.length) {
-        showResult();
-        return;
-      }
+      if (currentQuestionIndex >= selectedQuestions.length) return showResult();
       showQuestion();
     }
 
@@ -249,14 +273,13 @@
       questionScreen.style.display = "none";
       resultScreen.style.display = "block";
       const total = selectedQuestions.length;
-      const percentage = Math.round((score / total) * 100);
-      scoreText.textContent = `${total}問中 ${score}問正解です。正答率は${percentage}%です。`;
+      scoreText.textContent = `${total}問中 ${score}問正解です。正答率は${Math.round(score / total * 100)}%です。`;
     }
 
     function shuffleArray(array) {
       for (let i = array.length - 1; i > 0; i--) {
-        const randomIndex = Math.floor(Math.random() * (i + 1));
-        [array[i], array[randomIndex]] = [array[randomIndex], array[i]];
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
       }
       return array;
     }
@@ -267,7 +290,6 @@
       resultScreen.style.display = "none";
       startScreen.style.display = "block";
     });
-
     loadQuizData();
   </script>
 </body>
